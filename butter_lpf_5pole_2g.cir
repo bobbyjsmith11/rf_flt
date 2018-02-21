@@ -1,0 +1,9 @@
+*** BUTTERWORTH_5POLE_LPF_2G.CIR.CIR -  butterworth filter, low pass, 5-poles, 2GHz cutoff, 1st element shunt ***
+RS          net_1       GND         50.0        
+C1          net_1       GND         9.83631643083466e-13
+L2          net_1       net_2       6.437952685006049e-09
+C3          net_2       GND         3.1830988618379067e-12
+L4          net_2       net_3       6.437952685006049e-09
+C5          net_3       GND         9.836316430834664e-13
+RL          net_3       GND         50.0        
+.END
