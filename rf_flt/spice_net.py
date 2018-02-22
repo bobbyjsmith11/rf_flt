@@ -27,23 +27,20 @@ Two data structures are widely used in this module
         >>> ['RS.1', 'C1.1', 'L2.1']
         This means that net_1 is connected to RS pin 1, C1 pin 1 and L2 pin 1
 
-
 """
 
 class SpiceNetwork(object):
     """
     """
-    def __init__(self, parts_dict, title="MYCIRCUIT", message=""):
-        self.title = title
-        self.message = message
+    def __init__(self, parts_dict):
         self.components = parts_dict
 
-    def write_netlist(self, fo=None):
+    def write_netlist(self, fo=None, title="MYCIRCUIT.CIR"):
         if fo:
             if isinstance(fo, str):
                 fo = open(fo, 'w')
 
-        title_line = "*** " + self.title + ".CIR" + " - " + self.message + " ***"
+        title_line = title
         print(title_line)
         if fo:
             fo.write(title_line + "\n")
@@ -53,7 +50,6 @@ class SpiceNetwork(object):
             for node in self.components[ref_des]['pins']:
                 dat.append(str(node))
             dat.append(self.components[ref_des]['value'])
-            # print(dat)
             line = ("".join("{:<12}".format(x) for x in dat))
             print(line)
             if fo:

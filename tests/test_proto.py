@@ -70,3 +70,92 @@ class TestPrototypes(TestCase):
     #               50.0]
     #     n = int(random.random()*7)
     #     self.assertAlmostEqual(d_test[n], d_good[n], places=3)
+
+    # def test_connect_series_single_commponent(self):
+    #     test_cmp = {'ref_des': 'X1', 'value': 1.0} 
+    #     node = 1
+    #     proto.connect_series(test_cmp, node, flt_type='lowpass')
+
+    def test_connect_in_series_no_last_node(self):
+        c1 = {'ref_des': 'X1', 'value': 1}
+        c2 = {'ref_des': 'X2', 'value': 1}
+        c3 = {'ref_des': 'X3', 'value': 1}
+        cmps = [c1, c2, c3]
+        d_good = {'X1': {'pins': [5, 6], 'value':1},
+                  'X2': {'pins': [6, 7], 'value': 1},
+                  'X3': {'pins': [7, 8], 'value': 1},
+                  }
+        d_test = proto.connect_in_series(cmps, 5)
+        self.assertEqual(d_good, d_test)
+
+    def test_connect_in_series_last_node_not_gnd(self):
+        c1 = {'ref_des': 'X1', 'value': 1}
+        c2 = {'ref_des': 'X2', 'value': 1}
+        c3 = {'ref_des': 'X3', 'value': 1}
+        cmps = [c1, c2, c3]
+        d_good = {'X1': {'pins': [5, 9], 'value':1},
+                  'X2': {'pins': [9, 7], 'value': 1},
+                  'X3': {'pins': [7, 6], 'value': 1},
+                  }
+        d_test = proto.connect_in_series(cmps, 5, last_node=6)
+        self.assertEqual(d_good, d_test)
+    
+    def test_connect_in_series_last_node_gnd(self):
+        c1 = {'ref_des': 'X1', 'value': 1}
+        c2 = {'ref_des': 'X2', 'value': 1}
+        c3 = {'ref_des': 'X3', 'value': 1}
+        cmps = [c1, c2, c3]
+        d_good = {'X1': {'pins': [5, 6], 'value':1},
+                  'X2': {'pins': [6, 7], 'value': 1},
+                  'X3': {'pins': [7, 0], 'value': 1},
+                  }
+        d_test = proto.connect_in_series(cmps, 5, last_node=0)
+        self.assertEqual(d_good, d_test)
+    
+    def test_connect_in_series_single_cmp(self):
+        c1 = {'ref_des': 'X1', 'value': 1}
+        d_good = {'X1': {'pins': [5, 6], 'value':1},
+                  }
+        d_test = proto.connect_in_series(c1, 5)
+        self.assertEqual(d_good, d_test)
+    
+    def test_connect_in_parallel_no_last_node(self):
+        c1 = {'ref_des': 'X1', 'value': 1}
+        c2 = {'ref_des': 'X2', 'value': 1}
+        c3 = {'ref_des': 'X3', 'value': 1}
+        cmps = [c1, c2, c3]
+        d_good = {'X1': {'pins': [5, 6], 'value':1},
+                  'X2': {'pins': [5, 6], 'value': 1},
+                  'X3': {'pins': [5, 6], 'value': 1},
+                  }
+        d_test = proto.connect_in_parallel(cmps, 5)
+        self.assertEqual(d_good, d_test)
+    
+    def test_connect_in_parallel_last_node_not_gnd(self):
+        c1 = {'ref_des': 'X1', 'value': 1}
+        c2 = {'ref_des': 'X2', 'value': 1}
+        c3 = {'ref_des': 'X3', 'value': 1}
+        cmps = [c1, c2, c3]
+        d_good = {'X1': {'pins': [5, 10], 'value':1},
+                  'X2': {'pins': [5, 10], 'value': 1},
+                  'X3': {'pins': [5, 10], 'value': 1},
+                  }
+        d_test = proto.connect_in_parallel(cmps, 5, last_node=10)
+        self.assertEqual(d_good, d_test)
+
+    def test_connect_in_parallel_last_node_gnd(self):
+        c1 = {'ref_des': 'X1', 'value': 1}
+        c2 = {'ref_des': 'X2', 'value': 1}
+        c3 = {'ref_des': 'X3', 'value': 1}
+        cmps = [c1, c2, c3]
+        d_good = {'X1': {'pins': [5, 0], 'value':1},
+                  'X2': {'pins': [5, 0], 'value': 1},
+                  'X3': {'pins': [5, 0], 'value': 1},
+                  }
+        d_test = proto.connect_in_parallel(cmps, 5, last_node=0)
+        self.assertEqual(d_good, d_test)
+    
+
+
+
+

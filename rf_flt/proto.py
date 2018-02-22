@@ -6,23 +6,144 @@ proto.py
 :Description:
     Module for calculating the various prototype component values, i.e.
     Butterworth, Chebyshev, etc.
+:Example Usage:
+
+    >>> from rf_flt import proto
+    >>> flt = proto.Filter(5, type='butter')
+    >>> d = flt.get_bandpass(2e9, 0.1)
+    >>> from rf_flt import spice_net
+    >>> net = spice_net.SpiceNetwork(d)
+    >>> net.write_netlist(fo="my_netlist.cir", title="MyBPF")
 
 """
 import math
+from . import spice_net
 
 class Filter(object):
     """
     """
-    def __init__(self, num_poles, type='butter'):
+    def __init__(self, 
+                 num_poles, 
+                 type='butter', 
+                 ripple=0.5,
+                 R0=50):
         """
         Parameters
-            num_poles (int) - number of elements in the filter
-            type (str) - 'butter', 'cheby'
-
+            num_poles (int) - number of poles in filter
+            type (str) - <'butter', 'cheby'>
+            ripple (float) - for Chebyshev only this specifies the ripple in dB
+            R0 (float) - impedance in Ohms
         """
-        pass
+        self.type = type
+        self.R0 = R0
+        self.num_poles = num_poles
+        self.ripple = ripple
 
+    @property
+    def gs(self):
+        return self.get_coefficients()
+
+    def get_coefficients(self):
+        if self.type == 'butter': 
+            g = butterworth_coef(self.num_poles)
+        elif self.type == 'cheby':
+            g = chebyshev_coef(self.num_poles, self.ripple)
+        return g
+
+    def get_lowpass(self, fc, first_element='shunt', normalized=False):
+        """ 
+        Return a spice_net.SpiceNetwork object for the given filter
+        :Parameters:
+            fc (float) - cutoff frequency in Hz
+            first_element (str) - <'series'|'shunt'>
+            normalized (bool) - set True to get values normalized to R0=1 Ohm and fc=1 rad/sec
+        """ 
+        if not normalized:
+            cmps = transform_prototype(self.gs, 
+                                       fc, 
+                                       R0=self.R0, 
+                                       first_element=first_element, 
+                                       flt_type='lowpass')
+        else:
+            cmps = transform_prototype_normalized(self.gs, 
+                                                  first_element=first_element, 
+                                                  flt_type='lowpass')
+        cmp_dict = connect_highpass_lowpass(cmps, first_element=first_element)
+        net = spice_net.SpiceNetwork(cmp_dict)
+        return net
+
+    def get_highpass(self, fc, first_element='shunt', normalized=False):
+        """ 
+        Return a spice_net.SpiceNetwork object for the given filter
+        :Parameters:
+            fc (float) - cutoff frequency in Hz
+            first_element (str) - <'series'|'shunt'>
+            normalized (bool) - set True to get values normalized to R0=1 Ohm and fc=1 rad/sec
+        """ 
+        if not normalized:
+            cmps = transform_prototype(self.gs, 
+                                       fc, 
+                                       R0=self.R0, 
+                                       first_element=first_element, 
+                                       flt_type='highpass')
+        else:
+            cmps = transform_prototype_normalized(self.gs, 
+                                                  first_element=first_element, 
+                                                  flt_type='highpass')
+        cmp_dict = connect_highpass_lowpass(cmps, first_element=first_element)
+        net = spice_net.SpiceNetwork(cmp_dict)
+        return net
+
+    def get_bandpass(self, fc, bw_ratio, first_element='shunt', normalized=False):
+        """ 
+        Return a spice_net.SpiceNetwork object for the given filter
+        :Parameters:
+            fc (float) - center frequency in Hz
+            bw_ratio (float) - bandwidth (0.1=10%)
+            first_element (str) - <'series'|'shunt'>
+            normalized (bool) - set True to get values normalized to R0=1 Ohm and fc=1 rad/sec
+        """ 
+        if not normalized:
+            cmps = transform_prototype(self.gs, 
+                                       fc,
+                                       bw_ratio=bw_ratio, 
+                                       R0=self.R0, 
+                                       first_element=first_element, 
+                                       flt_type='bandpass')
+        else:
+            cmps = transform_prototype_normalized(self.gs,
+                                                  bw_ratio=bw_ratio, 
+                                                  first_element=first_element, 
+                                                  flt_type='bandpass')
+        cmp_dict = connect_bandpass(cmps, first_element=first_element)
+        net = spice_net.SpiceNetwork(cmp_dict)
+        return net
         
+
+    def get_bandstop(self, fc, bw_ratio, first_element='shunt', normalized=False):
+        """ 
+        Return a spice_net.SpiceNetwork object for the given filter
+        :Parameters:
+            fc (float) - center frequency in Hz
+            bw_ratio (float) - bandwidth (0.1=10%)
+            first_element (str) - <'series'|'shunt'>
+            normalized (bool) - set True to get values normalized to R0=1 Ohm and fc=1 rad/sec
+        """ 
+        if not normalized:
+            cmps = transform_prototype(self.gs, 
+                                       fc,
+                                       bw_ratio=bw_ratio, 
+                                       R0=self.R0, 
+                                       first_element=first_element, 
+                                       flt_type='bandstop')
+            cmps = transform_prototype_normalized(self.gs,
+                                                  bw_ratio=bw_ratio, 
+                                                  first_element=first_element, 
+                                                  flt_type='bandstop')
+        cmp_dict = connect_bandstop(cmps, first_element=first_element)
+        net = spice_net.SpiceNetwork(cmp_dict)
+        return net
+
 def butterworth_coef(poles, terms=2):
     """
     Return a list of Butterworth (a.k.a Maximally Flat) coefficients,
@@ -67,57 +188,12 @@ def chebyshev_coef(poles, ripple_db):
         g.append(1.0)
     return g
 
-def lowpass_transform(g, fc, R0=50, first_element='shunt'):
-    """ return the denormalized list of components
-    :Parameters:
-        - g (list) - normalized list of components (coefficients)
-        - fc (int or float) - cutoff frequency in Hz
-        - R0 (impedance) - network impedance, default to 50 Ohms
-    :Returns:
-        list of dicts
+def transform_prototype_normalized(gs, bw_ratio=0.1, first_element='shunt', flt_type='lowpass'):
     """
-    ret = {}
-    
-    # source terminating resistance
-    next_node = 1
-    # ret.append({'ref_des': 'RS',
-    #             'value': g[0]*R0,
-    #             'pins': ["net_" + str(next_node), 'GND']})
-    ret['RS'] = {'value': g[0]*R0,
-                'pins': ["net_" + str(next_node), 'GND']}
-    for i in range(1, len(g)-1):
-        if first_element == "shunt":
-            if (i % 2):
-                ref_des = "C" + str(i)
-                val = g[i]/(2*math.pi*fc*R0)
-                plus_node = 'net_' + str(next_node)
-                minus_node = 'GND '
-                # it's odd, shunt C
-            else:
-                # it's even, series L
-                ref_des = "L" + str(i)
-                val = g[i]*R0/(2*math.pi*fc)
-                plus_node = 'net_' + str(next_node)
-                next_node += 1
-                minus_node = 'net_' + str(next_node)
-        else:
-            if (i % 2):
-                ref_des = "L" + str(i)
-                val = g[i]*R0/(2*math.pi*fc)
-                plus_node = 'net_' + str(next_node)
-                next_node += 1
-                minus_node = 'net_' + str(next_node)
-            else:
-                ref_des = "C" + str(i)
-                val = g[i]/(2*math.pi*fc*R0)
-                plus_node = 'net_' + str(next_node)
-                minus_node = 'GND' 
-        ret[ref_des] = {'value': val,
-                        'pins': [str(plus_node), str(minus_node)]}
-    
-    ret['RL'] = {'value': g[-1]*R0,
-                'pins': ["net_" + str(next_node), 'GND']}
-    return ret
+    """
+    fc = 1.0/(2*math.pi)
+    cmp_list = transform_prototype(gs, fc, R0=1, bw_ratio=bw_ratio, first_element=first_element, flt_type=flt_type)
+    return cmp_list
 
 def transform_prototype(gs, 
                         fc, 
@@ -131,24 +207,22 @@ def transform_prototype(gs,
         fc (float) - cutoff or center frequency (depending on flt_type)
         R0 (float) - filter impedance (default = 50)
         bw_ratio (float) - relative bandwidth (0.1 = 10%).
-                            This only applies to bandpass or bandreject
+                            This only applies to bandpass or bandstop
         first_element (str) - <'series', 'shunt'>
-        flt_type (str) - <'lowpass', 'highpass', 'bandpass', 'bandreject'>
+        flt_type (str) - <'lowpass', 'highpass', 'bandpass', 'bandstop'>
     """
-    ret = {}
-    
     cmp_lst = [] 
-    cmp_lst.append("RS")
     for i in range(1, len(gs)-1):
         if first_element == "shunt":
             if (i % 2):
-                # it's odd, shunt C
+                # it's odd, shunt 
                 cmp = transform_shunt_coeff(gs[i], 
                                            fc, 
                                            R0=R0, 
                                            bw_ratio=bw_ratio, 
                                            flt_type=flt_type)
             else:
+                # it's even, series 
                 cmp = transform_series_coeff(gs[i], 
                                             fc, 
                                             R0=R0, 
@@ -156,12 +230,14 @@ def transform_prototype(gs,
                                             flt_type=flt_type)
         else:
             if (i % 2):
+                # it's odd, series 
                 cmp = transform_series_coeff(gs[i], 
                                             fc, 
                                             R0=R0, 
                                             bw_ratio=bw_ratio, 
                                             flt_type=flt_type)
             else:
+                # it's even, shunt 
                 cmp = transform_shunt_coeff(gs[i], 
                                            fc, 
                                            R0=R0, 
@@ -171,42 +247,7 @@ def transform_prototype(gs,
             item['ref_des'] = item['ref_des'] + str(i) 
         cmp_lst.append(cmp)
         
-    cmp_lst.append("RL")
     return cmp_lst
-
-def connect_series(cmp_list, next_node, flt_type='lowpass'):
-    """
-    returns tuple(list of dicts, next_node) 
-    """
-    d_ret = {}
-    if flt_type == 'lowpass' or flt_type == 'highpass':
-        ref_des = cmp_list[0]['ref_des']
-        val = cmp_list[0]['value']
-        plus_node = 'net_' + str(next_node)
-        next_node += 1
-        minus_node = 'net_' + str(next_node)
-        d_ret[ref_des] = {'value': val,
-                        'pins': [str(plus_node), str(minus_node)]}
-    elif flt_type == 'bandpass':
-        for cmp in cmp_list:
-            ref_des = cmp['ref_des']
-            val = cmp['value']
-            plus_node = 'net_' + str(next_node)
-            next_node += 1
-            minus_node = 'net_' + str(next_node)
-            d_ret[ref_des] = {'value': val,
-                            'pins': [str(plus_node), str(minus_node)]}
-    elif flt_type == 'bandreject':
-        for cmp in cmp_list:
-            ref_des = cmp['ref_des']
-            val = cmp['value']
-            plus_node = 'net_' + str(next_node)
-            minus_node = 'net_' + str(next_node + 1)
-            d_ret[ref_des] = {'value': val,
-                            'pins': [str(plus_node), str(minus_node)]}
-        next_node += 1
-
-    return (d_ret, next_node)
 
 def transform_series_coeff(g, fc, R0=50, bw_ratio=0.1, flt_type='lowpass'):
     """ 
@@ -219,7 +260,7 @@ def transform_series_coeff(g, fc, R0=50, bw_ratio=0.1, flt_type='lowpass'):
         lst.append({'ref_des':'L', 'value':val}) 
 
     elif flt_type == 'highpass':                
-        val = 1.0/(g*R0*2*math.pi*fc) 
+        val = 1.0/(R0*2*math.pi*fc*g) 
         lst.append({'ref_des':'C', 'value':val}) 
 
     elif flt_type == 'bandpass':
@@ -228,7 +269,7 @@ def transform_series_coeff(g, fc, R0=50, bw_ratio=0.1, flt_type='lowpass'):
         val = bw_ratio/(R0*2*math.pi*fc*g)
         lst.append({'ref_des':'C', 'value':val}) 
     
-    elif flt_type == 'bandreject':
+    elif flt_type == 'bandstop':
         val = R0*g*bw_ratio/(2*math.pi*fc)
         lst.append({'ref_des':'L', 'value':val}) 
         val = 1.0/(R0*g*2*math.pi*fc*bw_ratio)
@@ -248,7 +289,7 @@ def transform_shunt_coeff(g, fc, R0=50, bw_ratio=0.1, flt_type='lowpass'):
         lst.append({'ref_des':'C', 'value':val}) 
     
     elif flt_type == 'highpass':
-        val = g*R0/(2*math.pi*fc)
+        val = R0/(2*math.pi*fc*g)
         lst.append({'ref_des':'L', 'value':val}) 
 
     elif flt_type == 'bandpass':
@@ -257,7 +298,7 @@ def transform_shunt_coeff(g, fc, R0=50, bw_ratio=0.1, flt_type='lowpass'):
         val = g/(2*math.pi*fc*bw_ratio*R0) 
         lst.append({'ref_des':'C', 'value':val}) 
 
-    elif flt_type == 'bandreject':
+    elif flt_type == 'bandstop':
         val = R0/(g*2*math.pi*fc*bw_ratio)
         lst.append({'ref_des':'L', 'value':val}) 
         val = g*bw_ratio/(R0*2*math.pi*fc)
@@ -265,3 +306,144 @@ def transform_shunt_coeff(g, fc, R0=50, bw_ratio=0.1, flt_type='lowpass'):
     else:
         raise ValueError("not a valid filter type")
     return lst
+
+def connect_in_series(cmp_list, first_node, last_node=None):
+    """
+    Parameters
+        cmp_list (list of dicts) - each dict has keys: 'ref_des', 'value'
+    Returns dict with keys of 'ref_des' with values of dicts
+    with the following keys: 
+        'pins' : list of net names
+        'value' : float
+    """
+    if not isinstance(cmp_list, list):
+        cmp_list = [cmp_list]
+    nodes = []
+    for i in range(len(cmp_list) + 1):                  # create a list of node numbers but missing the last node
+        nodes.append(first_node + i)
+    if last_node != None:                               # check if user wants to name the last node
+        if last_node in nodes:                          # if last_node is in nodes, replace it with next available node number
+            idx = nodes.index(last_node)
+            nodes[idx] = max(nodes) + 1
+        nodes[-1] = last_node
+
+    d_ret = {}
+    for i in range(len(nodes) - 1):
+        ref_des = cmp_list[i]['ref_des']
+        val = cmp_list[i]['value']
+        p_node = nodes[i]
+        m_node = nodes[i+1]
+        d_ret[ref_des] = {'value': val,
+                        'pins': [p_node, m_node]}
+    return d_ret
+
+def connect_in_parallel(cmp_list, first_node, last_node=None):
+    """
+    Parameters
+        cmp_list (list of dicts) - each dict has keys: 'ref_des', 'value'
+    Returns dict with keys of 'ref_des' with values of dicts
+    with the following keys: 
+        'pins' : list of net names
+        'value' : float
+    """
+    if not isinstance(cmp_list, list):
+        cmp_list = [cmp_list]
+    d_ret = {}
+    for cmp in cmp_list:
+        ref_des = cmp['ref_des']
+        val = cmp['value']
+        if last_node == None:
+           last_node = first_node + 1 
+        d_ret[ref_des] = {'value': val,
+                        'pins': [first_node, last_node]}
+    return d_ret
+
+def connect_highpass_lowpass(cmp_list, first_element='shunt'):
+    """ return a dict:
+            keys are ref_des
+            values are {'pins': [net1, net2], 'value': part value}
+        The nodes are connected for a lowpass or highpass
+    """
+    d_ret = {}
+    current_node = 1
+    for i in range(len(cmp_list)):
+        if first_element == 'shunt':
+            if (i % 2):
+                # it's series in series
+                d = connect_in_series(cmp_list[i], current_node)
+                current_node = current_node + 1
+            else:
+                # it's series to ground
+                d = connect_in_series(cmp_list[i], current_node, last_node=0)
+        else:
+            if (i % 2):
+                # it's series to ground
+                d = connect_in_series(cmp_list[i], current_node, last_node=0)
+            else:
+                # it's series in series
+                d = connect_in_series(cmp_list[i], current_node)
+                current_node = current_node + 1
+        d_ret.update(d)
+    return d_ret
+
+def connect_bandpass(cmp_list, first_element='shunt'):
+    """ return a dict:
+            keys are ref_des
+            values are {'pins': [net1, net2], 'value': part value}
+        The nodes are connected for a bandpass configuration
+    """
+    d_ret = {}
+    current_node = 1
+    for i in range(len(cmp_list)):
+        if first_element == 'shunt':
+            if (i % 2):
+                # it's series in series
+                d = connect_in_series(cmp_list[i], current_node)
+                current_node = current_node + 2 
+            else:
+                # it's parallel to ground
+                d = connect_in_parallel(cmp_list[i], current_node, last_node=0)
+        else:
+            if (i % 2):
+                # it's parallel to ground
+                d = connect_in_parallel(cmp_list[i], current_node, last_node=0)
+            else:
+                # it's series in series
+                d = connect_in_series(cmp_list[i], current_node)
+                current_node = current_node + 2
+        d_ret.update(d)
+    return d_ret
+
+def connect_bandstop(cmp_list, first_element='shunt'):
+    """ return a dict:
+            keys are ref_des
+            values are {'pins': [net1, net2], 'value': part value}
+        The nodes are connected for a bandpass configuration
+    """
+    d_ret = {}
+    current_node = 1
+    for i in range(len(cmp_list)):
+        if first_element == 'shunt':
+            if (i % 2):
+                # it's parallel in series
+                d = connect_in_parallel(cmp_list[i], current_node, last_node=current_node+2)
+                current_node = current_node + 2
+            else:
+                # it's series to ground
+                d = connect_in_series(cmp_list[i], current_node, last_node=0)
+        else:
+            if (i % 2):
+                # it's series to ground
+                d = connect_in_series(cmp_list[i], current_node, last_node=0)
+            else:
+                # it's parallel in series
+                d = connect_in_parallel(cmp_list[i], current_node, last_node=current_node+2)
+                current_node = current_node + 2
+        d_ret.update(d)
+    return d_ret
+
+
+
+
+
+
