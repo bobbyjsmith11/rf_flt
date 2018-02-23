@@ -50,7 +50,7 @@ class SpiceNetwork(object):
             for node in self.components[ref_des]['pins']:
                 dat.append(str(node))
             dat.append(self.components[ref_des]['value'])
-            line = ("".join("{:<12}".format(x) for x in dat))
+            line = ("".join("{:<8}".format(x) for x in dat))
             print(line)
             if fo:
                 fo.write(line + "\n")

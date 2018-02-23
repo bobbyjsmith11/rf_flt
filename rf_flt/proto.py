@@ -50,7 +50,7 @@ class Filter(object):
             g = chebyshev_coef(self.num_poles, self.ripple)
         return g
 
-    def get_lowpass(self, fc, first_element='shunt', normalized=False):
+    def get_lowpass(self, fc=1.0, first_element='shunt', normalized=False):
         """ 
         Return a spice_net.SpiceNetwork object for the given filter
         :Parameters:
@@ -72,7 +72,7 @@ class Filter(object):
         net = spice_net.SpiceNetwork(cmp_dict)
         return net
 
-    def get_highpass(self, fc, first_element='shunt', normalized=False):
+    def get_highpass(self, fc=1.0, first_element='shunt', normalized=False):
         """ 
         Return a spice_net.SpiceNetwork object for the given filter
         :Parameters:
@@ -94,7 +94,7 @@ class Filter(object):
         net = spice_net.SpiceNetwork(cmp_dict)
         return net
 
-    def get_bandpass(self, fc, bw_ratio, first_element='shunt', normalized=False):
+    def get_bandpass(self, fc=1.0, bw_ratio=0.2, first_element='shunt', normalized=False):
         """ 
         Return a spice_net.SpiceNetwork object for the given filter
         :Parameters:
@@ -120,7 +120,7 @@ class Filter(object):
         return net
         
 
-    def get_bandstop(self, fc, bw_ratio, first_element='shunt', normalized=False):
+    def get_bandstop(self, fc=1.0, bw_ratio=0.2, first_element='shunt', normalized=False):
         """ 
         Return a spice_net.SpiceNetwork object for the given filter
         :Parameters:
@@ -443,7 +443,40 @@ def connect_bandstop(cmp_list, first_element='shunt'):
     return d_ret
 
 
-
-
-
+def richards_transform(cmp_list, fc=1.0, normalized=True):
+    """ 
+    performa Richards Transormation on a component dictionary and
+    return new component dictionary with only transmission lines 
+    """
+    d_ret = {}
+    pin_list = []
+    for ref_des in cmp_list:
+        idx = ref_des[1:]
+        val = cmp_list[ref_des]['value']
+        p1 = cmp_list[ref_des]['pins'][0]
+        pin_list.append(p1)
+        p2 = cmp_list[ref_des]['pins'][1]
+        pin_list.append(p2)
+        if ref_des.startswith("L"):
+            val_str = 'Z0=' + str(val) + ' F=' + str(fc) + ' NL=0.125'
+            d_ret['T'+str(idx)] = {'pins': [p1, 'SC', p2, 'SC'],
+                               'value': val_str}            
+        elif ref_des.startswith("C"):
+            val_str = 'Z0=' + str(1/val) + ' F=' + str(fc) + ' NL=0.125'
+            d_ret['T'+str(idx)] = {'pins': [p1, 'OC', p2, 'OC'],
+                               'value': val_str}            
+        else:
+            raise ValueError(ref_des + " not supported in Richards Transform")
+    next_pin = max(pin_list) + 1
+    for ref in d_ret:
+        if d_ret[ref]['pins'][1] == 'SC':
+            d_ret[ref]['pins'][1] = next_pin 
+            d_ret[ref]['pins'][3] = next_pin 
+            next_pin += 1
+        elif d_ret[ref]['pins'][1] == 'OC':
+            d_ret[ref]['pins'][1] = next_pin 
+            next_pin += 1
+            d_ret[ref]['pins'][3] = next_pin 
+            next_pin += 1
+    return d_ret
 
