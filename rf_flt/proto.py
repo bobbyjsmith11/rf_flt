@@ -459,24 +459,33 @@ def richards_transform(cmp_list, fc=1.0, normalized=True):
         pin_list.append(p2)
         if ref_des.startswith("L"):
             val_str = 'Z0=' + str(val) + ' F=' + str(fc) + ' NL=0.125'
-            d_ret['T'+str(idx)] = {'pins': [p1, 'SC', p2, 'SC'],
+            d_ret['T'+str(idx)] = {'pins': [p1, p2, 'SC', 'SC'],
                                'value': val_str}            
         elif ref_des.startswith("C"):
             val_str = 'Z0=' + str(1/val) + ' F=' + str(fc) + ' NL=0.125'
-            d_ret['T'+str(idx)] = {'pins': [p1, 'OC', p2, 'OC'],
+            d_ret['T'+str(idx)] = {'pins': [p1, p2, 'OC', 'OC'],
                                'value': val_str}            
         else:
             raise ValueError(ref_des + " not supported in Richards Transform")
     next_pin = max(pin_list) + 1
     for ref in d_ret:
-        if d_ret[ref]['pins'][1] == 'SC':
-            d_ret[ref]['pins'][1] = next_pin 
+        if d_ret[ref]['pins'][2] == 'SC':
+            d_ret[ref]['pins'][2] = next_pin 
             d_ret[ref]['pins'][3] = next_pin 
             next_pin += 1
-        elif d_ret[ref]['pins'][1] == 'OC':
-            d_ret[ref]['pins'][1] = next_pin 
+        elif d_ret[ref]['pins'][2] == 'OC':
+            d_ret[ref]['pins'][2] = next_pin 
             next_pin += 1
             d_ret[ref]['pins'][3] = next_pin 
             next_pin += 1
     return d_ret
 
+def format_value(val, dec_places=4):
+    """ 
+    Return a string formatted value in scientific notation with 
+    dec_places decimal accuracy
+    """
+    val_str = "{:.{dec}E}".format(val, dec=dec_places)
+    if val_str.endswith('+00'):
+        val_str = "{:.{dec}f}".format(val, dec=dec_places)
+    return val_str

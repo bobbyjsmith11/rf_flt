@@ -99,12 +99,12 @@ def get_netlist_comp(cmp_list):
     """
     nets = []
     d = {}
-    for cmp in cmp_list:
-        for i in range(len(cmp['pins'])):
-            if cmp['pins'][i] not in d.keys():
-                d[cmp['pins'][i]] = []
-            d[cmp['pins'][i]].append(cmp['ref_des'] + "." + str(i+1))
-            nets.append(cmp['pins'][i])
+    for ref_des in cmp_list:
+        for i in range(len(cmp_list[ref_des]['pins'])):
+            if cmp_list[ref_des]['pins'][i] not in d.keys():
+                d[cmp_list[ref_des]['pins'][i]] = []
+            d[cmp_list[ref_des]['pins'][i]].append(ref_des + "." + str(i+1))
+            nets.append(cmp_list[ref_des]['pins'][i])
     nets = list(set(nets))
 
     return d
