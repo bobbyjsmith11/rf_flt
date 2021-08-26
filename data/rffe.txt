@@ -1,0 +1,10 @@
+name                g_db        nf_db       oip3_dbm        oip2_dbm        op1db_dbm
+AM1164              21          1.5         33              34              16
+SPLIT-1-2           -12         12          999             999             999
+ISO-1-2             9           4           24              25              14
+SW-FLT              -4          4           999             999             999
+BALUN               -2          2           999             999             999
+NAVASSA             0           12          30              30              0
+
+
+
